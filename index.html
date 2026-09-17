@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CY365 Web - IPカメラ監視システム</title>
+    <title>CY365 Web - ローカルカメラ録画</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -27,12 +27,13 @@
             display: flex; flex-direction: column;
         }
         .sidebar-header { padding: 20px; border-bottom: 1px solid #333; }
-        .add-device-btn {
+        .connect-btn {
             width: 100%; padding: 12px; background: linear-gradient(135deg, #00d4ff, #0099cc);
             border: none; border-radius: 8px; color: #fff; font-weight: 600; cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.2s; margin-bottom: 10px;
         }
-        .add-device-btn:hover { transform: translateY(-2px); }
+        .connect-btn:hover { transform: translateY(-2px); }
+        .connect-btn:disabled { background: #333; cursor: not-allowed; }
         .device-list { flex: 1; overflow-y: auto; padding: 10px; }
         .device-item {
             padding: 15px; background: #1a1a1a; border-radius: 10px; margin-bottom: 10px;
@@ -40,14 +41,7 @@
         }
         .device-item:hover { background: #222; }
         .device-item.active { border-color: #00d4ff; background: #1a2a3a; }
-        .device-item.offline { opacity: 0.5; }
-        .device-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .device-name { font-weight: 600; }
-        .device-status {
-            font-size: 11px; padding: 3px 8px; border-radius: 10px;
-            background: #00ff88; color: #000; font-weight: 600;
-        }
-        .device-status.offline { background: #ff4444; color: #fff; }
+        .device-name { font-weight: 600; margin-bottom: 5px; }
         .device-info { font-size: 12px; color: #888; }
         .main-content { flex: 1; display: flex; flex-direction: column; }
         .video-container {
@@ -60,7 +54,7 @@
         .camera-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.3; }
         .no-signal { color: #666; margin-bottom: 10px; }
         .video-element {
-            width: 100%; height: 100%; object-fit: contain; display: none;
+            width: 100%; height: 100%; object-fit: contain; display: none; background: #000;
         }
         .video-element.active { display: block; }
         .recording-indicator {
@@ -93,40 +87,20 @@
         .control-label { position: absolute; bottom: -20px; font-size: 10px; color: #888; white-space: nowrap; }
         .bottom-panel {
             background: #111; border-top: 1px solid #333; padding: 15px;
-            display: flex; gap: 20px; height: 200px;
+            display: flex; gap: 20px; height: 220px;
         }
-        .panel-section { flex: 1; background: #1a1a1a; border-radius: 10px; padding: 15px; overflow: hidden; }
+        .panel-section { flex: 1; background: #1a1a1a; border-radius: 10px; padding: 15px; overflow: hidden; display: flex; flex-direction: column; }
         .panel-title { font-size: 12px; color: #888; margin-bottom: 10px; display: flex; justify-content: space-between; }
         .snapshot-grid { display: flex; gap: 10px; overflow-x: auto; }
         .snapshot-item {
             width: 120px; height: 90px; background: #222; border-radius: 5px;
             flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-            font-size: 24px; color: #444;
+            font-size: 24px; color: #444; cursor: pointer; position: relative; overflow: hidden;
         }
-        .log-list { font-size: 12px; color: #aaa; max-height: 130px; overflow-y: auto; }
+        .snapshot-item img { width: 100%; height: 100%; object-fit: cover; }
+        .log-list { font-size: 12px; color: #aaa; overflow-y: auto; flex: 1; }
         .log-item { padding: 4px 0; border-bottom: 1px solid #222; }
         .log-time { color: #00d4ff; margin-right: 8px; }
-        .modal {
-            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;
-        }
-        .modal.active { display: flex; }
-        .modal-content {
-            background: #1a1a1a; border-radius: 15px; padding: 30px; width: 90%; max-width: 400px; border: 1px solid #333;
-        }
-        .form-group { margin-bottom: 15px; }
-        .form-label { display: block; font-size: 12px; color: #888; margin-bottom: 5px; }
-        .form-input {
-            width: 100%; padding: 12px; background: #222; border: 1px solid #333;
-            border-radius: 8px; color: #fff; font-size: 14px;
-        }
-        .form-input:focus { outline: none; border-color: #00d4ff; }
-        .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
-        .btn {
-            flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;
-        }
-        .btn-secondary { background: #333; color: #fff; }
-        .btn-primary { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #fff; }
         .notification {
             position: fixed; top: 20px; right: 20px; background: #1a1a1a;
             border-left: 4px solid #00d4ff; padding: 15px 20px; border-radius: 8px;
@@ -134,6 +108,12 @@
             transition: transform 0.3s; z-index: 1001;
         }
         .notification.show { transform: translateX(0); }
+        .download-list { display: flex; gap: 10px; overflow-x: auto; }
+        .download-item {
+            background: #222; padding: 10px; border-radius: 5px; font-size: 12px;
+            display: flex; align-items: center; gap: 8px; white-space: nowrap;
+        }
+        .download-item a { color: #00d4ff; text-decoration: none; }
         @media (max-width: 768px) {
             .sidebar { width: 100%; position: fixed; bottom: 0; height: 200px; z-index: 100; }
             .main-content { margin-bottom: 200px; height: calc(100vh - 270px); }
@@ -145,18 +125,24 @@
     <header class="header">
         <div class="logo">
             <div class="logo-icon">CY</div>
-            <div style="font-size: 20px; font-weight: 600;">CY365 Web</div>
+            <div style="font-size: 20px; font-weight: 600;">CY365 Web - ローカル録画</div>
         </div>
-        <div style="font-size: 14px; color: #00ff88;">● オンライン</div>
+        <div id="statusText" style="font-size: 14px; color: #ff4444;">● 未接続</div>
     </header>
 
     <div class="main-container">
         <aside class="sidebar">
             <div class="sidebar-header">
-                <div style="font-size: 12px; color: #888; margin-bottom: 10px;">デバイス一覧</div>
-                <button class="add-device-btn" onclick="openModal()">+ デバイス追加</button>
+                <div style="font-size: 12px; color: #888; margin-bottom: 10px;">カメラ接続</div>
+                <button class="connect-btn" id="connectBtn" onclick="connectCamera()">🎥 PCカメラに接続</button>
+                <button class="connect-btn" style="background: #ff4444; display: none;" id="disconnectBtn" onclick="disconnectCamera()">切断</button>
             </div>
-            <div class="device-list" id="deviceList"></div>
+            <div class="device-list">
+                <div class="device-item active">
+                    <div class="device-name">内蔵/外付けWebカメラ</div>
+                    <div class="device-info">PCに接続されたカメラを使用</div>
+                </div>
+            </div>
         </aside>
 
         <main class="main-content">
@@ -167,59 +153,41 @@
                 <div class="video-placeholder" id="placeholder">
                     <div class="camera-icon">📷</div>
                     <div class="no-signal">カメラ未接続</div>
-                    <div style="color: #444; font-size: 14px;">デバイスを選択してください</div>
+                    <div style="color: #444; font-size: 14px;">「PCカメラに接続」をクリック</div>
                 </div>
-                <video class="video-element" id="video" autoplay playsinline></video>
+                <video class="video-element" id="video" autoplay playsinline muted></video>
             </div>
 
             <div class="controls-bar">
                 <div class="control-wrapper">
-                    <button class="control-btn" id="btnSnap" onclick="snapshot()" disabled>📸</button>
+                    <button class="control-btn" id="btnSnap" onclick="takeSnapshot()" disabled>📸</button>
                     <span class="control-label">スナップショット</span>
                 </div>
                 <div class="control-wrapper">
-                    <button class="control-btn" id="btnRec" onclick="toggleRec()" disabled>⏺</button>
-                    <span class="control-label">録画</span>
+                    <button class="control-btn" id="btnRec" onclick="toggleRecording()" disabled>⏺</button>
+                    <span class="control-label">録画開始/停止</span>
                 </div>
                 <div class="control-wrapper">
-                    <button class="control-btn" id="btnTalk" onclick="toggleTalk()" disabled>🎤</button>
-                    <span class="control-label">通話</span>
-                </div>
-                <div class="control-wrapper">
-                    <button class="control-btn" id="btnSet" onclick="alert('設定パネル（デモ）')" disabled>⚙️</button>
-                    <span class="control-label">設定</span>
+                    <button class="control-btn" onclick="downloadLastRecording()" id="btnDownload" disabled>💾</button>
+                    <span class="control-label">最後の動画</span>
                 </div>
             </div>
 
             <div class="bottom-panel">
                 <div class="panel-section">
-                    <div class="panel-title"><span>スナップショット</span><span onclick="clearSnapshots()" style="cursor: pointer; color: #00d4ff;">クリア</span></div>
-                    <div class="snapshot-grid" id="snapshots"><div class="snapshot-item">📷</div></div>
+                    <div class="panel-title"><span>スナップショット履歴</span><span onclick="clearSnapshots()" style="cursor: pointer; color: #00d4ff;">クリア</span></div>
+                    <div class="snapshot-grid" id="snapshots"></div>
                 </div>
                 <div class="panel-section">
-                    <div class="panel-title">アクティビティログ</div>
-                    <div class="log-list" id="logs"><div class="log-item"><span class="log-time">--:--:--</span>システム起動完了</div></div>
+                    <div class="panel-title"><span>録画ファイル</span></div>
+                    <div class="download-list" id="recordings"></div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">ログ</div>
+                    <div class="log-list" id="logs"><div class="log-item"><span class="log-time">--:--:--</span>準備完了</div></div>
                 </div>
             </div>
         </main>
-    </div>
-
-    <div class="modal" id="modal">
-        <div class="modal-content">
-            <h3 style="margin-bottom: 20px;">デバイス追加</h3>
-            <div class="form-group">
-                <label class="form-label">デバイス名</label>
-                <input type="text" class="form-input" id="devName" placeholder="例: 玄関カメラ">
-            </div>
-            <div class="form-group">
-                <label class="form-label">UID</label>
-                <input type="text" class="form-input" id="devUid" placeholder="例: CY365-001">
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
-                <button class="btn btn-primary" onclick="addDevice()">追加</button>
-            </div>
-        </div>
     </div>
 
     <div class="notification" id="notif">
@@ -228,109 +196,210 @@
     </div>
 
     <script>
-        let devices = [
-            {id: '1', name: '玄関カメラ', status: 'online', uid: 'CY365-A001'},
-            {id: '2', name: 'リビング', status: 'online', uid: 'CY365-A002'},
-            {id: '3', name: 'ガレージ', status: 'offline', uid: 'CY365-A003'}
-        ];
-        let selected = null, recording = false, recTimer = null, recSec = 0;
+        let stream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+        let recordingInterval = null;
+        let recordingSeconds = 0;
+        let recordings = [];
 
-        function render() {
-            const list = document.getElementById('deviceList');
-            list.innerHTML = devices.map(d => `
-                <div class="device-item ${d.status} ${selected?.id==d.id?'active':''}" onclick="select('${d.id}')">
-                    <div class="device-header">
-                        <span class="device-name">${d.name}</span>
-                        <span class="device-status ${d.status}">${d.status=='online'?'オンライン':'オフライン'}</span>
-                    </div>
-                    <div class="device-info">${d.uid}</div>
-                </div>
-            `).join('');
-        }
+        // 時計更新
+        setInterval(() => {
+            document.getElementById('clock').textContent = new Date().toLocaleString('ja-JP');
+        }, 1000);
 
-        function select(id) {
-            selected = devices.find(d => d.id == id);
-            render();
-            if (selected.status == 'online') {
+        // カメラ接続
+        async function connectCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }, 
+                    audio: true 
+                });
+                
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.classList.add('active');
                 document.getElementById('placeholder').style.display = 'none';
-                document.getElementById('video').classList.add('active');
-                ['btnSnap','btnRec','btnTalk','btnSet'].forEach(i => document.getElementById(i).disabled = false);
-                showNotif('接続成功', selected.name + ' に接続しました');
-                addLog(selected.name + ' に接続');
-            } else {
-                showNotif('オフライン', 'このデバイスはオフラインです');
+                
+                document.getElementById('connectBtn').style.display = 'none';
+                document.getElementById('disconnectBtn').style.display = 'block';
+                document.getElementById('statusText').textContent = '● 接続中';
+                document.getElementById('statusText').style.color = '#00ff88';
+                
+                document.getElementById('btnSnap').disabled = false;
+                document.getElementById('btnRec').disabled = false;
+                
+                showNotif('接続成功', 'カメラに接続しました');
+                addLog('カメラに接続しました');
+                
+                // MediaRecorderの準備
+                setupRecorder();
+            } catch (err) {
+                showNotif('エラー', 'カメラへのアクセスが拒否されました: ' + err.message);
+                addLog('接続エラー: ' + err.message);
             }
         }
 
-        function snapshot() {
-            if (!selected) return;
-            const grid = document.getElementById('snapshots');
+        // カメラ切断
+        function disconnectCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            document.getElementById('video').classList.remove('active');
+            document.getElementById('placeholder').style.display = 'block';
+            document.getElementById('connectBtn').style.display = 'block';
+            document.getElementById('disconnectBtn').style.display = 'none';
+            document.getElementById('statusText').textContent = '● 未接続';
+            document.getElementById('statusText').style.color = '#ff4444';
+            
+            document.getElementById('btnSnap').disabled = true;
+            document.getElementById('btnRec').disabled = true;
+            document.getElementById('btnDownload').disabled = true;
+            
+            if (isRecording) stopRecording();
+            
+            showNotif('切断', 'カメラを切断しました');
+            addLog('カメラを切断しました');
+        }
+
+        // MediaRecorderセットアップ
+        function setupRecorder() {
+            const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
+                ? 'video/webm; codecs=vp9' 
+                : 'video/webm';
+            
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const filename = `recording-${timestamp}.webm`;
+                
+                recordings.push({ url, filename, blob });
+                
+                // ダウンロードリストに追加
+                const recDiv = document.createElement('div');
+                recDiv.className = 'download-item';
+                recDiv.innerHTML = `
+                    <span>🎥</span>
+                    <a href="${url}" download="${filename}">${filename}</a>
+                    <span style="color: #888;">(${formatTime(recordingSeconds)})</span>
+                `;
+                document.getElementById('recordings').appendChild(recDiv);
+                
+                document.getElementById('btnDownload').disabled = false;
+                showNotif('録画完了', '動画を保存しました: ' + filename);
+                addLog('録画完了: ' + filename);
+            };
+        }
+
+        // スナップショット
+        function takeSnapshot() {
+            const video = document.getElementById('video');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            const imgData = canvas.toDataURL('image/jpeg');
             const div = document.createElement('div');
             div.className = 'snapshot-item';
-            div.style.background = 'linear-gradient(135deg, #1a3a4a, #0a2a3a)';
-            div.innerHTML = '📸';
+            div.innerHTML = `<img src="${imgData}">`;
+            div.onclick = () => {
+                const a = document.createElement('a');
+                a.href = imgData;
+                a.download = `snapshot-${Date.now()}.jpg`;
+                a.click();
+            };
+            
+            const grid = document.getElementById('snapshots');
             grid.insertBefore(div, grid.firstChild);
+            
             if (grid.children.length > 6) grid.removeChild(grid.lastChild);
-            showNotif('スナップショット', '画像を保存しました');
-            addLog('スナップショット撮影: ' + selected.name);
+            
+            showNotif('スナップショット', 'クリックでダウンロード');
+            addLog('スナップショット撮影');
         }
 
-        function toggleRec() {
-            recording = !recording;
-            const btn = document.getElementById('btnRec');
-            const ind = document.getElementById('recIndicator');
-            if (recording) {
-                btn.classList.add('danger');
-                ind.classList.add('active');
-                recSec = 0;
-                recTimer = setInterval(() => {
-                    recSec++;
-                    const m = String(Math.floor(recSec/60)).padStart(2,'0');
-                    const s = String(recSec%60).padStart(2,'0');
-                    ind.innerHTML = `<div class="rec-dot"></div>録画中 ${m}:${s}`;
-                }, 1000);
-                addLog('録画開始: ' + selected.name);
+        // 録画開始/停止
+        function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
             } else {
-                btn.classList.remove('danger');
-                ind.classList.remove('active');
-                clearInterval(recTimer);
-                showNotif('録画終了', '動画を保存しました');
-                addLog('録画終了: ' + selected.name);
+                startRecording();
             }
         }
 
-        function toggleTalk() {
-            const btn = document.getElementById('btnTalk');
-            btn.classList.toggle('primary');
-            const on = btn.classList.contains('primary');
-            showNotif('音声通話', on ? '双方向通信を開始' : '通信を終了');
-            addLog(on ? '通話開始' : '通話終了');
+        function startRecording() {
+            recordedChunks = [];
+            mediaRecorder.start();
+            isRecording = true;
+            recordingSeconds = 0;
+            
+            document.getElementById('btnRec').classList.add('danger');
+            document.getElementById('recIndicator').classList.add('active');
+            
+            recordingInterval = setInterval(() => {
+                recordingSeconds++;
+                const m = String(Math.floor(recordingSeconds / 60)).padStart(2, '0');
+                const s = String(recordingSeconds % 60).padStart(2, '0');
+                document.querySelector('#recIndicator span:last-child').textContent = `録画中 ${m}:${s}`;
+            }, 1000);
+            
+            showNotif('録画開始', '録画を開始しました');
+            addLog('録画開始');
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            isRecording = false;
+            clearInterval(recordingInterval);
+            
+            document.getElementById('btnRec').classList.remove('danger');
+            document.getElementById('recIndicator').classList.remove('active');
+            document.querySelector('#recIndicator span:last-child').textContent = '録画中 00:00';
+            
+            showNotif('録画停止', '録画を停止しました');
+            addLog('録画停止');
+        }
+
+        // 最後の録画をダウンロード
+        function downloadLastRecording() {
+            if (recordings.length > 0) {
+                const last = recordings[recordings.length - 1];
+                const a = document.createElement('a');
+                a.href = last.url;
+                a.download = last.filename;
+                a.click();
+            }
         }
 
         function clearSnapshots() {
-            document.getElementById('snapshots').innerHTML = '<div class="snapshot-item">📷</div>';
+            document.getElementById('snapshots').innerHTML = '';
             addLog('スナップショットをクリア');
         }
 
         function addLog(msg) {
             const t = new Date().toLocaleTimeString('ja-JP');
             const logs = document.getElementById('logs');
-            logs.innerHTML = `<div class="log-item"><span class="log-time">${t}</span>${msg}</div>` + logs.innerHTML;
-        }
-
-        function openModal() { document.getElementById('modal').classList.add('active'); }
-        function closeModal() { document.getElementById('modal').classList.remove('active'); }
-        
-        function addDevice() {
-            const name = document.getElementById('devName').value;
-            const uid = document.getElementById('devUid').value;
-            if (!name || !uid) return alert('入力してください');
-            devices.push({id: Date.now().toString(), name, uid, status: 'online'});
-            render();
-            closeModal();
-            showNotif('デバイス追加', name + ' を追加しました');
-            document.getElementById('devName').value = '';
-            document.getElementById('devUid').value = '';
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            item.innerHTML = `<span class="log-time">${t}</span>${msg}`;
+            logs.insertBefore(item, logs.firstChild);
         }
 
         function showNotif(title, text) {
@@ -340,11 +409,16 @@
             setTimeout(() => document.getElementById('notif').classList.remove('show'), 3000);
         }
 
-        setInterval(() => {
-            document.getElementById('clock').textContent = new Date().toLocaleString('ja-JP');
-        }, 1000);
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m}分${s}秒`;
+        }
 
-        render();
+        // ページ離脱時に録画停止
+        window.onbeforeunload = () => {
+            if (isRecording) mediaRecorder.stop();
+        };
     </script>
 </body>
 </html>
