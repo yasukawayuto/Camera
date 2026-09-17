@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CY365 Web - IPカメラ監視システム</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a; color: #fff; min-height: 100vh; overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #333; height: 70px;
+        }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo-icon {
+            width: 40px; height: 40px; background: linear-gradient(135deg, #00d4ff, #0099cc);
+            border-radius: 10px; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 18px;
+        }
+        .main-container { display: flex; height: calc(100vh - 70px); }
+        .sidebar {
+            width: 300px; background: #111; border-right: 1px solid #333;
+            display: flex; flex-direction: column;
+        }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid #333; }
+        .add-device-btn {
+            width: 100%; padding: 12px; background: linear-gradient(135deg, #00d4ff, #0099cc);
+            border: none; border-radius: 8px; color: #fff; font-weight: 600; cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .add-device-btn:hover { transform: translateY(-2px); }
+        .device-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .device-item {
+            padding: 15px; background: #1a1a1a; border-radius: 10px; margin-bottom: 10px;
+            cursor: pointer; border: 2px solid transparent; transition: all 0.3s;
+        }
+        .device-item:hover { background: #222; }
+        .device-item.active { border-color: #00d4ff; background: #1a2a3a; }
+        .device-item.offline { opacity: 0.5; }
+        .device-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .device-name { font-weight: 600; }
+        .device-status {
+            font-size: 11px; padding: 3px 8px; border-radius: 10px;
+            background: #00ff88; color: #000; font-weight: 600;
+        }
+        .device-status.offline { background: #ff4444; color: #fff; }
+        .device-info { font-size: 12px; color: #888; }
+        .main-content { flex: 1; display: flex; flex-direction: column; }
+        .video-container {
+            flex: 1; position: relative; background: #000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .video-placeholder {
+            text-align: center; padding: 40px;
+        }
+        .camera-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.3; }
+        .no-signal { color: #666; margin-bottom: 10px; }
+        .video-element {
+            width: 100%; height: 100%; object-fit: contain; display: none;
+        }
+        .video-element.active { display: block; }
+        .recording-indicator {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(255, 68, 68, 0.9); padding: 8px 15px;
+            border-radius: 20px; font-size: 12px; font-weight: 600; display: none;
+            align-items: center; gap: 8px; z-index: 10;
+        }
+        .recording-indicator.active { display: flex; }
+        .rec-dot { width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        .timestamp {
+            position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7);
+            padding: 8px 15px; border-radius: 5px; font-family: monospace; z-index: 10;
+        }
+        .controls-bar {
+            background: #111; padding: 15px; display: flex; justify-content: center;
+            gap: 30px; border-top: 1px solid #333;
+        }
+        .control-wrapper { position: relative; display: flex; flex-direction: column; align-items: center; }
+        .control-btn {
+            width: 50px; height: 50px; border-radius: 50%; border: none; background: #222;
+            color: #fff; font-size: 20px; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; transition: all 0.3s;
+        }
+        .control-btn:hover:not(:disabled) { background: #333; transform: scale(1.1); }
+        .control-btn.primary { background: linear-gradient(135deg, #00d4ff, #0099cc); }
+        .control-btn.danger { background: #ff4444; }
+        .control-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .control-label { position: absolute; bottom: -20px; font-size: 10px; color: #888; white-space: nowrap; }
+        .bottom-panel {
+            background: #111; border-top: 1px solid #333; padding: 15px;
+            display: flex; gap: 20px; height: 200px;
+        }
+        .panel-section { flex: 1; background: #1a1a1a; border-radius: 10px; padding: 15px; overflow: hidden; }
+        .panel-title { font-size: 12px; color: #888; margin-bottom: 10px; display: flex; justify-content: space-between; }
+        .snapshot-grid { display: flex; gap: 10px; overflow-x: auto; }
+        .snapshot-item {
+            width: 120px; height: 90px; background: #222; border-radius: 5px;
+            flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 24px; color: #444;
+        }
+        .log-list { font-size: 12px; color: #aaa; max-height: 130px; overflow-y: auto; }
+        .log-item { padding: 4px 0; border-bottom: 1px solid #222; }
+        .log-time { color: #00d4ff; margin-right: 8px; }
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #1a1a1a; border-radius: 15px; padding: 30px; width: 90%; max-width: 400px; border: 1px solid #333;
+        }
+        .form-group { margin-bottom: 15px; }
+        .form-label { display: block; font-size: 12px; color: #888; margin-bottom: 5px; }
+        .form-input {
+            width: 100%; padding: 12px; background: #222; border: 1px solid #333;
+            border-radius: 8px; color: #fff; font-size: 14px;
+        }
+        .form-input:focus { outline: none; border-color: #00d4ff; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+        .btn {
+            flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;
+        }
+        .btn-secondary { background: #333; color: #fff; }
+        .btn-primary { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #fff; }
+        .notification {
+            position: fixed; top: 20px; right: 20px; background: #1a1a1a;
+            border-left: 4px solid #00d4ff; padding: 15px 20px; border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5); transform: translateX(400px);
+            transition: transform 0.3s; z-index: 1001;
+        }
+        .notification.show { transform: translateX(0); }
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; position: fixed; bottom: 0; height: 200px; z-index: 100; }
+            .main-content { margin-bottom: 200px; height: calc(100vh - 270px); }
+            .bottom-panel { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">CY</div>
+            <div style="font-size: 20px; font-weight: 600;">CY365 Web</div>
+        </div>
+        <div style="font-size: 14px; color: #00ff88;">● オンライン</div>
+    </header>
+
+    <div class="main-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div style="font-size: 12px; color: #888; margin-bottom: 10px;">デバイス一覧</div>
+                <button class="add-device-btn" onclick="openModal()">+ デバイス追加</button>
+            </div>
+            <div class="device-list" id="deviceList"></div>
+        </aside>
+
+        <main class="main-content">
+            <div class="video-container">
+                <div class="recording-indicator" id="recIndicator"><div class="rec-dot"></div>録画中 00:00</div>
+                <div class="timestamp" id="clock">00:00:00</div>
+                
+                <div class="video-placeholder" id="placeholder">
+                    <div class="camera-icon">📷</div>
+                    <div class="no-signal">カメラ未接続</div>
+                    <div style="color: #444; font-size: 14px;">デバイスを選択してください</div>
+                </div>
+                <video class="video-element" id="video" autoplay playsinline></video>
+            </div>
+
+            <div class="controls-bar">
+                <div class="control-wrapper">
+                    <button class="control-btn" id="btnSnap" onclick="snapshot()" disabled>📸</button>
+                    <span class="control-label">スナップショット</span>
+                </div>
+                <div class="control-wrapper">
+                    <button class="control-btn" id="btnRec" onclick="toggleRec()" disabled>⏺</button>
+                    <span class="control-label">録画</span>
+                </div>
+                <div class="control-wrapper">
+                    <button class="control-btn" id="btnTalk" onclick="toggleTalk()" disabled>🎤</button>
+                    <span class="control-label">通話</span>
+                </div>
+                <div class="control-wrapper">
+                    <button class="control-btn" id="btnSet" onclick="alert('設定パネル（デモ）')" disabled>⚙️</button>
+                    <span class="control-label">設定</span>
+                </div>
+            </div>
+
+            <div class="bottom-panel">
+                <div class="panel-section">
+                    <div class="panel-title"><span>スナップショット</span><span onclick="clearSnapshots()" style="cursor: pointer; color: #00d4ff;">クリア</span></div>
+                    <div class="snapshot-grid" id="snapshots"><div class="snapshot-item">📷</div></div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">アクティビティログ</div>
+                    <div class="log-list" id="logs"><div class="log-item"><span class="log-time">--:--:--</span>システム起動完了</div></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 20px;">デバイス追加</h3>
+            <div class="form-group">
+                <label class="form-label">デバイス名</label>
+                <input type="text" class="form-input" id="devName" placeholder="例: 玄関カメラ">
+            </div>
+            <div class="form-group">
+                <label class="form-label">UID</label>
+                <input type="text" class="form-input" id="devUid" placeholder="例: CY365-001">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+                <button class="btn btn-primary" onclick="addDevice()">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="notification" id="notif">
+        <div style="font-weight: 600; margin-bottom: 5px;" id="notifTitle">通知</div>
+        <div style="font-size: 13px; color: #aaa;" id="notifText">メッセージ</div>
+    </div>
+
+    <script>
+        let devices = [
+            {id: '1', name: '玄関カメラ', status: 'online', uid: 'CY365-A001'},
+            {id: '2', name: 'リビング', status: 'online', uid: 'CY365-A002'},
+            {id: '3', name: 'ガレージ', status: 'offline', uid: 'CY365-A003'}
+        ];
+        let selected = null, recording = false, recTimer = null, recSec = 0;
+
+        function render() {
+            const list = document.getElementById('deviceList');
+            list.innerHTML = devices.map(d => `
+                <div class="device-item ${d.status} ${selected?.id==d.id?'active':''}" onclick="select('${d.id}')">
+                    <div class="device-header">
+                        <span class="device-name">${d.name}</span>
+                        <span class="device-status ${d.status}">${d.status=='online'?'オンライン':'オフライン'}</span>
+                    </div>
+                    <div class="device-info">${d.uid}</div>
+                </div>
+            `).join('');
+        }
+
+        function select(id) {
+            selected = devices.find(d => d.id == id);
+            render();
+            if (selected.status == 'online') {
+                document.getElementById('placeholder').style.display = 'none';
+                document.getElementById('video').classList.add('active');
+                ['btnSnap','btnRec','btnTalk','btnSet'].forEach(i => document.getElementById(i).disabled = false);
+                showNotif('接続成功', selected.name + ' に接続しました');
+                addLog(selected.name + ' に接続');
+            } else {
+                showNotif('オフライン', 'このデバイスはオフラインです');
+            }
+        }
+
+        function snapshot() {
+            if (!selected) return;
+            const grid = document.getElementById('snapshots');
+            const div = document.createElement('div');
+            div.className = 'snapshot-item';
+            div.style.background = 'linear-gradient(135deg, #1a3a4a, #0a2a3a)';
+            div.innerHTML = '📸';
+            grid.insertBefore(div, grid.firstChild);
+            if (grid.children.length > 6) grid.removeChild(grid.lastChild);
+            showNotif('スナップショット', '画像を保存しました');
+            addLog('スナップショット撮影: ' + selected.name);
+        }
+
+        function toggleRec() {
+            recording = !recording;
+            const btn = document.getElementById('btnRec');
+            const ind = document.getElementById('recIndicator');
+            if (recording) {
+                btn.classList.add('danger');
+                ind.classList.add('active');
+                recSec = 0;
+                recTimer = setInterval(() => {
+                    recSec++;
+                    const m = String(Math.floor(recSec/60)).padStart(2,'0');
+                    const s = String(recSec%60).padStart(2,'0');
+                    ind.innerHTML = `<div class="rec-dot"></div>録画中 ${m}:${s}`;
+                }, 1000);
+                addLog('録画開始: ' + selected.name);
+            } else {
+                btn.classList.remove('danger');
+                ind.classList.remove('active');
+                clearInterval(recTimer);
+                showNotif('録画終了', '動画を保存しました');
+                addLog('録画終了: ' + selected.name);
+            }
+        }
+
+        function toggleTalk() {
+            const btn = document.getElementById('btnTalk');
+            btn.classList.toggle('primary');
+            const on = btn.classList.contains('primary');
+            showNotif('音声通話', on ? '双方向通信を開始' : '通信を終了');
+            addLog(on ? '通話開始' : '通話終了');
+        }
+
+        function clearSnapshots() {
+            document.getElementById('snapshots').innerHTML = '<div class="snapshot-item">📷</div>';
+            addLog('スナップショットをクリア');
+        }
+
+        function addLog(msg) {
+            const t = new Date().toLocaleTimeString('ja-JP');
+            const logs = document.getElementById('logs');
+            logs.innerHTML = `<div class="log-item"><span class="log-time">${t}</span>${msg}</div>` + logs.innerHTML;
+        }
+
+        function openModal() { document.getElementById('modal').classList.add('active'); }
+        function closeModal() { document.getElementById('modal').classList.remove('active'); }
+        
+        function addDevice() {
+            const name = document.getElementById('devName').value;
+            const uid = document.getElementById('devUid').value;
+            if (!name || !uid) return alert('入力してください');
+            devices.push({id: Date.now().toString(), name, uid, status: 'online'});
+            render();
+            closeModal();
+            showNotif('デバイス追加', name + ' を追加しました');
+            document.getElementById('devName').value = '';
+            document.getElementById('devUid').value = '';
+        }
+
+        function showNotif(title, text) {
+            document.getElementById('notifTitle').textContent = title;
+            document.getElementById('notifText').textContent = text;
+            document.getElementById('notif').classList.add('show');
+            setTimeout(() => document.getElementById('notif').classList.remove('show'), 3000);
+        }
+
+        setInterval(() => {
+            document.getElementById('clock').textContent = new Date().toLocaleString('ja-JP');
+        }, 1000);
+
+        render();
+    </script>
+</body>
+</html>
